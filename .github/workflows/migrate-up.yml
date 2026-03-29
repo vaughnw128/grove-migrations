@@ -8,8 +8,17 @@ on:
       - "migrations/**"
 
 jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/validate.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
   detect:
     name: Detect Changed Databases
+    needs: validate
     runs-on: ubuntu-latest
     outputs:
       databases: ${{ steps.changed.outputs.databases }}
