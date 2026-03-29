@@ -1,4 +1,4 @@
--- Add message_embeddings table for discsync-embeddings.
+-- Add message_embeddings table for discsync-embeddings :).
 
 CREATE TABLE IF NOT EXISTS message_embeddings (
     message_id BIGINT NOT NULL PRIMARY KEY

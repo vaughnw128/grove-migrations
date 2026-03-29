@@ -69,7 +69,7 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
         run: |
-          DATABASE_URL=$(op read "op://immanent-grove/${{ matrix.database }}-pg-app/uri")
+          DATABASE_URL=$(op read "op://immanent-grove/${{ matrix.database }}-pg-app/uri-pooler-rw-lb")
           migrate \
             -path "migrations/${{ matrix.database }}" \
             -database "$DATABASE_URL" \
