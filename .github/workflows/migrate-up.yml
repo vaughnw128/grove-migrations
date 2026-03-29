@@ -59,6 +59,12 @@ jobs:
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:ci
 
+      - name: Configure DNS for internal zone
+        run: |
+          sudo sed -i 's/#DNS=/DNS=100.100.100.100/' /etc/systemd/resolved.conf
+          sudo sed -i 's/#Domains=/Domains=internal.vw-ops.net/' /etc/systemd/resolved.conf
+          sudo systemctl restart systemd-resolved
+
       - name: Install golang-migrate
         run: |
           curl -fsSL https://github.com/golang-migrate/migrate/releases/latest/download/migrate.linux-amd64.tar.gz \
