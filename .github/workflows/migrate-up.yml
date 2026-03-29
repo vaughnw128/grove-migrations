@@ -60,6 +60,12 @@ jobs:
           tags: tag:ci
           args: --accept-dns=true
 
+      - name: Configure DNS
+        run: |
+          sudo resolvectl dns tailscale0 100.100.100.100
+          sudo resolvectl domain tailscale0 "internal.vw-ops.net" "vw-ops.net" "~."
+          sudo resolvectl default-route tailscale0 false
+
       - name: Install golang-migrate
         run: |
           curl -fsSL https://github.com/golang-migrate/migrate/releases/latest/download/migrate.linux-amd64.tar.gz \
