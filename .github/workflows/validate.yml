@@ -1,0 +1,175 @@
+name: Validate
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "migrations/**"
+
+jobs:
+  validate:
+    name: Validate Migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install golang-migrate
+        run: |
+          curl -fsSL https://github.com/golang-migrate/migrate/releases/latest/download/migrate.linux-amd64.tar.gz \
+            | tar -xz migrate
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Check filename convention
+        run: |
+          set -e
+          error=0
+          while IFS= read -r file; do
+            name=$(basename "$file")
+            if ! echo "$name" | grep -qE '^[0-9]{14}_.+\.(up|down)\.sql$'; then
+              echo "ERROR: Invalid filename: $file"
+              echo "  Expected format: YYYYMMDDHHMMSS_description.(up|down).sql"
+              error=1
+            fi
+          done < <(find migrations -name "*.sql" -type f)
+          exit $error
+
+      - name: Check up/down pairs are balanced
+        run: |
+          set -e
+          error=0
+          for dir in migrations/*/; do
+            database=$(basename "$dir")
+            up_count=$(find "$dir" -name "*.up.sql" | wc -l)
+            down_count=$(find "$dir" -name "*.down.sql" | wc -l)
+            if [ "$up_count" != "$down_count" ]; then
+              echo "ERROR: [$database] Mismatched up/down pairs (up=$up_count, down=$down_count)"
+              error=1
+            fi
+            # Check each up file has a matching down file
+            while IFS= read -r up_file; do
+              down_file="${up_file%.up.sql}.down.sql"
+              if [ ! -f "$down_file" ]; then
+                echo "ERROR: Missing down migration for: $up_file"
+                error=1
+              fi
+            done < <(find "$dir" -name "*.up.sql")
+          done
+          exit $error
+
+      - name: Check migrations are non-empty
+        run: |
+          set -e
+          error=0
+          while IFS= read -r file; do
+            content=$(grep -v '^\s*--' "$file" | grep -v '^\s*$' || true)
+            if [ -z "$content" ]; then
+              echo "ERROR: Migration contains no SQL statements: $file"
+              error=1
+            fi
+          done < <(find migrations -name "*.sql" -type f)
+          exit $error
+
+      - name: Validate migrate can parse each database
+        run: |
+          set -e
+          for dir in migrations/*/; do
+            database=$(basename "$dir")
+            echo "Checking migration sequence for: $database"
+            migrate \
+              -path "$dir" \
+              -database "postgres://localhost/dummy?sslmode=disable" \
+              version 2>&1 | grep -v "no migration" || true
+          done
+
+  lint:
+    name: Lint SQL
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install sqlfluff
+        run: python3 -m pip install sqlfluff
+
+      - name: Lint SQL files
+        run: sqlfluff lint
+
+      - name: Check sqlfluff fixes are clean
+        run: |
+          sqlfluff fix --force
+          if ! git diff --exit-code; then
+            echo "ERROR: sqlfluff fix produced changes — please run 'sqlfluff fix' locally and commit the result"
+            exit 1
+          fi
+
+  test-migrate:
+    name: Test Migrate (${{ matrix.database }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - sbux-oracle
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGPORT: 5432
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          cache: "false"
+
+      - name: Install golang-migrate
+        run: |
+          go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Run migrations up
+        run: |
+          migrate \
+            -path "migrations/${{ matrix.database }}" \
+            -database "postgres://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/postgres?sslmode=disable" \
+            up
+
+      - name: Dump schema
+        run: |
+          pg_dump "postgres://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/postgres?sslmode=disable" \
+            --schema-only --no-owner --no-privileges --quote-all-identifiers \
+            --file "schema-${{ matrix.database }}.sql"
+
+      - name: Run migrations down
+        run: |
+          yes | migrate \
+            -path "migrations/${{ matrix.database }}" \
+            -database "postgres://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/postgres?sslmode=disable" \
+            down -all
+
+      - name: Upload schema artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: schema-${{ matrix.database }}
+          path: schema-${{ matrix.database }}.sql
+          if-no-files-found: ignore

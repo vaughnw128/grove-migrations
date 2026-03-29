@@ -1,0 +1,9 @@
+[sqlfluff]
+dialect = postgres
+templater = raw
+large_file_skip_byte_limit = 50000
+# ignored rules
+exclude_rules = RF04
+
+# Global formatting
+max_line_length = 120

@@ -1,0 +1,48 @@
+name: Migrate Down
+
+on:
+  workflow_dispatch:
+    inputs:
+      database:
+        description: "Database to roll back"
+        required: true
+        type: string
+      steps:
+        description: "Number of migrations to roll back"
+        required: true
+        type: number
+        default: 1
+
+jobs:
+  migrate-down:
+    name: Rollback ${{ inputs.database }} (${{ inputs.steps }} step(s))
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install 1Password CLI
+        uses: 1password/install-cli-action@v1
+
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install golang-migrate
+        run: |
+          curl -fsSL https://github.com/golang-migrate/migrate/releases/latest/download/migrate.linux-amd64.tar.gz \
+            | tar -xz migrate
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Run rollback
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          DATABASE_URL=$(op read "op://immanent-grove/${{ inputs.database }}-pg-app/uri")
+          migrate \
+            -path "migrations/${{ inputs.database }}" \
+            -database "$DATABASE_URL" \
+            down ${{ inputs.steps }}

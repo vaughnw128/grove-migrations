@@ -1,0 +1,8 @@
+# golang-migrate lock files
+*.lock
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

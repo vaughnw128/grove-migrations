@@ -1,0 +1,67 @@
+name: Migrate Up
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "migrations/**"
+
+jobs:
+  detect:
+    name: Detect Changed Databases
+    runs-on: ubuntu-latest
+    outputs:
+      databases: ${{ steps.changed.outputs.databases }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed database directories
+        id: changed
+        run: |
+          changed=$(git diff --name-only HEAD^ HEAD -- 'migrations/**' \
+            | grep '^migrations/' \
+            | cut -d'/' -f2 \
+            | sort -u \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "databases=$changed" >> "$GITHUB_OUTPUT"
+
+  migrate:
+    name: Migrate ${{ matrix.database }}
+    needs: detect
+    if: needs.detect.outputs.databases != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database: ${{ fromJson(needs.detect.outputs.databases) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install 1Password CLI
+        uses: 1password/install-cli-action@v1
+
+      - name: Tailscale
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Install golang-migrate
+        run: |
+          curl -fsSL https://github.com/golang-migrate/migrate/releases/latest/download/migrate.linux-amd64.tar.gz \
+            | tar -xz migrate
+          sudo mv migrate /usr/local/bin/migrate
+
+      - name: Run migrations
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+        run: |
+          DATABASE_URL=$(op read "op://immanent-grove/${{ matrix.database }}-pg-app/uri")
+          migrate \
+            -path "migrations/${{ matrix.database }}" \
+            -database "$DATABASE_URL" \
+            up
