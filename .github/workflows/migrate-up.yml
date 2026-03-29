@@ -62,9 +62,7 @@ jobs:
 
       - name: Configure DNS
         run: |
-          sudo resolvectl dns tailscale0 100.100.100.100
-          sudo resolvectl domain tailscale0 "internal.vw-ops.net" "vw-ops.net" "~."
-          sudo resolvectl default-route tailscale0 false
+          echo "10.0.10.1 grove-cluster-pooler-rw.internal.vw-ops.net" | sudo tee -a /etc/hosts
 
       - name: Install golang-migrate
         run: |
