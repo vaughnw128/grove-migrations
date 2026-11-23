@@ -13,19 +13,24 @@ on:
         type: number
         default: 1
 
+permissions:
+  contents: read
+
 jobs:
   migrate-down:
     name: Rollback ${{ inputs.database }} (${{ inputs.steps }} step(s))
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install 1Password CLI
-        uses: 1password/install-cli-action@v1
+        uses: 1password/install-cli-action@143a85f84a90555d121cde2ff5872e393a47ab9f # v1.0.0
 
       - name: Tailscale
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
@@ -45,9 +50,15 @@ jobs:
       - name: Run rollback
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          DATABASE: ${{ inputs.database }}
+          STEPS: ${{ inputs.steps }}
         run: |
-          DATABASE_URL=$(op read "op://immanent-grove/${{ inputs.database }}-pg-app/uri-pooler-rw-lb")
+          if ! [[ "$DATABASE" =~ ^[a-z0-9-]+$ ]] || [ ! -d "migrations/$DATABASE" ]; then
+            echo "::error::Unknown database '$DATABASE'"
+            exit 1
+          fi
+          DATABASE_URL=$(op read "op://immanent-grove/${DATABASE}-pg-app/uri-pooler-rw-lb")
           migrate \
-            -path "migrations/${{ inputs.database }}" \
+            -path "migrations/${DATABASE}" \
             -database "$DATABASE_URL" \
-            down ${{ inputs.steps }}
+            down "$STEPS"

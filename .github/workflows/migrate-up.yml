@@ -7,14 +7,15 @@ on:
     paths:
       - "migrations/**"
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Validate
     uses: ./.github/workflows/validate.yml
     permissions:
       contents: read
-      security-events: write
-      actions: read
 
   detect:
     name: Detect Changed Databases
@@ -23,8 +24,9 @@ jobs:
     outputs:
       databases: ${{ steps.changed.outputs.databases }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
           fetch-depth: 2
 
       - name: Detect changed database directories
@@ -47,13 +49,15 @@ jobs:
       matrix:
         database: ${{ fromJson(needs.detect.outputs.databases) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Install 1Password CLI
-        uses: 1password/install-cli-action@v1
+        uses: 1password/install-cli-action@143a85f84a90555d121cde2ff5872e393a47ab9f # v1.0.0
 
       - name: Tailscale
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@6cae46e2d796f265265cfcf628b72a32b4d7cade # v3.3.0
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
@@ -73,9 +77,10 @@ jobs:
       - name: Run migrations
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          DATABASE: ${{ matrix.database }}
         run: |
-          DATABASE_URL=$(op read "op://immanent-grove/${{ matrix.database }}-pg-app/uri-pooler-rw-lb")
+          DATABASE_URL=$(op read "op://immanent-grove/${DATABASE}-pg-app/uri-pooler-rw-lb")
           migrate \
-            -path "migrations/${{ matrix.database }}" \
+            -path "migrations/${DATABASE}" \
             -database "$DATABASE_URL" \
             up

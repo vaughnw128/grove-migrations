@@ -10,7 +10,7 @@ Migrations are run using golang-migrate within Github Actions, which connects to
 
 ```bash
 migrate create -ext sql -dir ./migrations -seq <migration_name>
-``` 
+```
 
 2. Edit the generated SQL files to define the `up` and `down` migrations.
 
